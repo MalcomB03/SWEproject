@@ -1,120 +1,199 @@
-package SWE_Project_Files;
-
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.*;
+import java.io.*;
 import java.util.*;
+import java.util.List;
+import java.util.stream.Collectors;
+import javax.swing.event.*;
 
-public class FlightPlannerGUI extends JFrame {
-    private JTextField txtStartAirport;
-    private JTextField txtDestinationAirport;
-    private JComboBox<Airplane> cbAirplanes;
-    private JButton btnLoadAirplanes;
-    private JButton btnPlanFlight;
-    private JTextArea taFlightPlan;
-
-    private Airport selectedStartAirport;
+public class FlightPlannerGUI {
+    private static final Map<String, String> airportInfo = new HashMap<>();
+    private static final Map<String, String> icaoToName = new HashMap<>();
+    private static final Map<String, String> nameToIcao = new HashMap<>();
+    private static JFrame frame;
+    private static JPanel mainPanel;
+    private static JComboBox<String> startAirport;
+    private static JComboBox<String> destinationAirport;
+    private static JTextArea startInfo;
+    private static JTextArea destinationInfo;
+    private static JToggleButton searchModeToggle;
 
     public FlightPlannerGUI() {
-        setTitle("Electronic Flight Planning System");
-        setSize(600, 500);
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setLocationRelativeTo(null);
-        initializeComponents();
+        loadAirportData("airports.csv"); // Load airports from CSV
+        SwingUtilities.invokeLater(FlightPlannerGUI::createAndShowGUI);
+    }
+    
+
+    private static void createAndShowGUI() {
+        frame = new JFrame("Electronic Flight Planning System");
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setSize(600, 500);
+
+        mainPanel = new JPanel();
+        mainPanel.setLayout(new GridLayout(7, 2, 10, 10));
+
+        searchModeToggle = new JToggleButton("Search by ICAO");
+        searchModeToggle.addItemListener(e -> updateSearchMode());
+
+        JLabel startLabel = new JLabel("Starting Airport:");
+        startAirport = new JComboBox<>(icaoToName.keySet().toArray(new String[0]));
+        startAirport.setEditable(true);  // Allow typing
+        startInfo = new JTextArea(3, 25);
+        startInfo.setEditable(false);
+
+        JLabel destinationLabel = new JLabel("Destination Airport:");
+        destinationAirport = new JComboBox<>(icaoToName.keySet().toArray(new String[0]));
+        destinationAirport.setEditable(true);  // Allow typing
+        destinationInfo = new JTextArea(3, 25);
+        destinationInfo.setEditable(false);
+
+        JLabel aircraftLabel = new JLabel("Aircraft Type:");
+        JComboBox<String> aircraftType = new JComboBox<>(new String[]{"Small Prop Plane", "Jet", "Multi-engine Jet"});
+
+        JButton planFlightButton = new JButton("Plan Flight");
+
+        startAirport.addActionListener(e -> startInfo.setText(airportInfo.getOrDefault((String) startAirport.getSelectedItem(),
+         "No data")));
+        destinationAirport.addActionListener(e -> destinationInfo.setText(airportInfo.getOrDefault((String) destinationAirport.getSelectedItem(),
+         "No data")));
+
+        planFlightButton.addActionListener(e -> showFlightOptions());
+
+        // Add document listeners for search functionality
+        addSearchFunctionality(startAirport, icaoToName.keySet());
+        addSearchFunctionality(destinationAirport, icaoToName.keySet());
+
+        mainPanel.add(searchModeToggle);
+        mainPanel.add(new JLabel()); // Spacer
+        mainPanel.add(startLabel);
+        mainPanel.add(startAirport);
+        mainPanel.add(new JLabel("Airport Info:"));
+        mainPanel.add(startInfo);
+        mainPanel.add(destinationLabel);
+        mainPanel.add(destinationAirport);
+        mainPanel.add(new JLabel("Airport Info:"));
+        mainPanel.add(destinationInfo);
+        mainPanel.add(aircraftLabel);
+        mainPanel.add(aircraftType);
+        mainPanel.add(new JLabel()); // Spacer
+        mainPanel.add(planFlightButton);
+
+        frame.add(mainPanel);
+        frame.setVisible(true);
     }
 
-    private void initializeComponents() {
-        // Top panel for input fields and buttons.
-        JPanel pnlTop = new JPanel(new GridLayout(4, 2, 5, 5));
-        
-        pnlTop.add(new JLabel("Enter Starting Airport (ICAO or name substring):"));
-        txtStartAirport = new JTextField();
-        pnlTop.add(txtStartAirport);
-
-        pnlTop.add(new JLabel("Enter Destination Airport (ICAO or name substring):"));
-        txtDestinationAirport = new JTextField();
-        pnlTop.add(txtDestinationAirport);
-
-        // Button to load airplanes for the starting airport.
-        btnLoadAirplanes = new JButton("Load Airplanes for Start Airport");
-        btnLoadAirplanes.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                loadAirplanes();
+    private static void addSearchFunctionality(JComboBox<String> comboBox, Set<String> items) {
+        JTextField editor = (JTextField) comboBox.getEditor().getEditorComponent();
+        editor.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                SwingUtilities.invokeLater(() -> filterComboBoxItems(comboBox, editor.getText(), items));
+            }
+    
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                SwingUtilities.invokeLater(() -> filterComboBoxItems(comboBox, editor.getText(), items));
+            }
+    
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+                SwingUtilities.invokeLater(() -> filterComboBoxItems(comboBox, editor.getText(), items));
             }
         });
-        pnlTop.add(btnLoadAirplanes);
-
-        // Combo box to select an available airplane.
-        cbAirplanes = new JComboBox<>();
-        pnlTop.add(cbAirplanes);
-
-        // Button to trigger flight planning.
-        btnPlanFlight = new JButton("Plan Flight");
-        btnPlanFlight.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                planFlight();
-            }
-        });
-        pnlTop.add(btnPlanFlight);
-
-        add(pnlTop, BorderLayout.NORTH);
-
-        // Text area to display the computed flight plan.
-        taFlightPlan = new JTextArea();
-        taFlightPlan.setEditable(false);
-        JScrollPane scrollPane = new JScrollPane(taFlightPlan);
-        add(scrollPane, BorderLayout.CENTER);
     }
 
-    private void loadAirplanes() {
-        String startQuery = txtStartAirport.getText().trim();
-        if (startQuery.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Please enter a starting airport.");
-            return;
-        }
-        selectedStartAirport = Database.selectAirport(startQuery);
-        if (selectedStartAirport == null) {
-            JOptionPane.showMessageDialog(this, "No airport found for: " + startQuery);
-            return;
-        }
-        List<Airplane> airplanes = Database.getAirplanesForAirport(selectedStartAirport);
-        if (airplanes.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "No airplanes found for " + selectedStartAirport.name);
-            return;
-        }
-        cbAirplanes.removeAllItems();
-        for (Airplane plane : airplanes) {
-            cbAirplanes.addItem(plane);
-        }
-        JOptionPane.showMessageDialog(this, "Airplanes loaded for " + selectedStartAirport.name);
-    }
+    private static void filterComboBoxItems(JComboBox<String> comboBox, String text, Set<String> items) {
+        DefaultComboBoxModel<String> model = new DefaultComboBoxModel<>();
 
-    private void planFlight() {
-        if (selectedStartAirport == null) {
-            JOptionPane.showMessageDialog(this, "Please load the starting airport and airplanes first.");
-            return;
-        }
-        String destQuery = txtDestinationAirport.getText().trim();
-        if (destQuery.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Please enter a destination airport.");
-            return;
-        }
-        Airport destinationAirport = Database.selectAirport(destQuery);
-        if (destinationAirport == null) {
-            JOptionPane.showMessageDialog(this, "No airport found for: " + destQuery);
-            return;
-        }
-        Airplane airplane = (Airplane) cbAirplanes.getSelectedItem();
-        if (airplane == null) {
-            JOptionPane.showMessageDialog(this, "Please select an airplane.");
-            return;
-        }
-        FlightPlanner planner = new FlightPlanner();
-        FlightPlan flightPlan = planner.planFlight(selectedStartAirport, airplane, destinationAirport);
-        if (flightPlan == null) {
-            taFlightPlan.setText("Flight planning failed: The flight is impossible given the refuel constraints.");
+        // Filter items based on text
+        List<String> filteredItems = items.stream()
+                .filter(item -> item.toLowerCase().contains(text.toLowerCase()))
+                .collect(Collectors.toList());
+
+        if (filteredItems.isEmpty()) {
+            model.addElement("No results found");
         } else {
-            taFlightPlan.setText(flightPlan.toString());
+            for (String item : filteredItems) {
+                model.addElement(item);
+            }
+        }
+        // Revalidate and repaint the combo box to show updated items
+        comboBox.setModel(model);
+        comboBox.setEditable(true);  // Preserve ability to type
+        comboBox.setPopupVisible(true);;  // Ensure the dropdown is visible
+        comboBox.revalidate();
+        comboBox.repaint();
+    }
+
+    private static void updateSearchMode() {
+        boolean searchByICAO = searchModeToggle.isSelected();
+        searchModeToggle.setText(searchByICAO ? "Search by Name" : "Search by ICAO");
+
+        Set<String> newItems = searchByICAO ? icaoToName.keySet() : nameToIcao.keySet();
+
+        // Preserve selected values
+        String startSelection = (String) startAirport.getSelectedItem();
+        String destinationSelection = (String) destinationAirport.getSelectedItem();
+
+        updateComboBox(startAirport, newItems);
+        updateComboBox(destinationAirport, newItems);
+
+        startAirport.setSelectedItem(startSelection);
+        destinationAirport.setSelectedItem(destinationSelection);
+    }
+
+    private static void updateComboBox(JComboBox<String> comboBox, Set<String> items) {
+        comboBox.removeAllItems();
+        for (String item : items) {
+            comboBox.addItem(item);
+        }
+    }
+
+    private static void showFlightOptions() {
+        JPanel flightOptionsPanel = new JPanel(new BorderLayout());
+
+        JLabel title = new JLabel("Flight Options Available", SwingConstants.CENTER);
+        title.setFont(new Font("Arial", Font.BOLD, 18));
+        flightOptionsPanel.add(title, BorderLayout.NORTH);
+
+        JButton backButton = new JButton("Back");
+        backButton.addActionListener(e -> {
+            frame.getContentPane().removeAll();
+            frame.add(mainPanel);
+            frame.revalidate();
+            frame.repaint();
+        });
+
+        JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        topPanel.add(backButton);
+        flightOptionsPanel.add(topPanel, BorderLayout.WEST);
+
+        frame.getContentPane().removeAll();
+        frame.add(flightOptionsPanel);
+        frame.revalidate();
+        frame.repaint();
+    }
+
+    private static void loadAirportData(String filename) {
+        try (BufferedReader br = new BufferedReader(new FileReader(filename))) {
+            String line;
+            br.readLine(); // Skip header line
+            while ((line = br.readLine()) != null) {
+                String[] data = line.split(",");
+                if (data.length >= 6) {
+                    String icao = data[0];
+                    String name = data[1];
+                    String airportName = icao + " - " + name;
+                    String info = "Lat: " + data[2] + ", Lon: " + data[3] +
+                            "\nComm: " + data[4] +
+                            "\nFuel: " + data[5];
+                    airportInfo.put(airportName, info);
+                    icaoToName.put(icao, airportName);
+                    nameToIcao.put(name, airportName);
+                }
+            }
+        } catch (IOException e) {
+            JOptionPane.showMessageDialog(null, "Error loading airport data: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 }
